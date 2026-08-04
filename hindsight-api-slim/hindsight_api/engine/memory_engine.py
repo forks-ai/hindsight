@@ -3146,8 +3146,10 @@ class MemoryEngine(MemoryEngineInterface):
         async def init_cross_encoder():
             """Initialize cross-encoder model."""
             cross_encoder = self._cross_encoder_reranker.cross_encoder
-            # For local providers, run in thread pool to avoid blocking event loop
-            if cross_encoder.provider_name == "local":
+            # For in-process models, run in thread pool to avoid blocking event loop.
+            # getattr: tests inject duck-typed cross encoders that don't subclass
+            # CrossEncoderModel (same reason as the provider_name read in _recall).
+            if getattr(cross_encoder, "blocking_init", False):
                 await loop.run_in_executor(None, lambda: asyncio.run(cross_encoder.initialize()))
             else:
                 await cross_encoder.initialize()
@@ -7138,7 +7140,7 @@ class MemoryEngine(MemoryEngineInterface):
                             f"DELETE FROM {fq_table('invalidated_memory_units')} WHERE bank_id = $1", bank_id
                         )
 
-                        # Delete entities (cascades to unit_entities, entity_cooccurrences, memory_links with entity_id)
+                        # Delete entities (cascades to unit_entities, entity_cooccurrences)
                         await conn.execute(f"DELETE FROM {fq_table('entities')} WHERE bank_id = $1", bank_id)
 
                         # Sweep extension-owned bank-scoped tables (audit receipts,
